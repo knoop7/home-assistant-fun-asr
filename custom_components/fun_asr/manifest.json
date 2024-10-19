@@ -1,5 +1,5 @@
 {
-  "domain": "czsvatek_sensor",
+  "domain": "elektro_network_tariff",
   "name": "DualMode ASR",
   "codeowners": [
     "@yaming116"
