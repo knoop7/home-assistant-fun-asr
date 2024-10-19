@@ -2,7 +2,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-DOMAIN = "fun_asr"
+DOMAIN = "czsvatek_sensor"
 PLATFORMS = (Platform.STT,)
 
 async def async_setup(hass: HomeAssistant, config: dict):
