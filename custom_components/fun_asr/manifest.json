@@ -1,5 +1,5 @@
 {
-  "domain": "fun_asr",
+  "domain": "czsvatek_sensor",
   "name": "DualMode ASR",
   "codeowners": [
     "@yaming116"
