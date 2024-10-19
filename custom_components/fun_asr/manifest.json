@@ -1,6 +1,6 @@
 {
   "domain": "fun_asr",
-  "name": "Fun Asr",
+  "name": "DualMode ASR",
   "codeowners": [
     "@yaming116"
   ],
@@ -9,5 +9,5 @@
   "documentation": "https://github.com/yaming116/home-assistant-fun-asr",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/yaming116/home-assistant-fun-asr/issues",
-  "version": "1.0.0"
+  "version": "2.0.0"
 }
