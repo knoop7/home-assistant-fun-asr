@@ -23,6 +23,7 @@ async def async_setup_entry(
 
 class FasterASRSTT(stt.SpeechToTextEntity):
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+        super().__init__()
         server: str = config_entry.data["server"]
 
         if server.endswith('/'):
@@ -32,6 +33,16 @@ class FasterASRSTT(stt.SpeechToTextEntity):
         self.model : str = config_entry.data["model"]
         self._attr_name = f"Fun Asr server: ({server})"
         self._attr_unique_id = f"{config_entry.entry_id[:7]}-fun-asr"
+        self._attr_state = "就绪"
+        self._attr_extra_state_attributes = {"响应": ""}
+
+    @property
+    def state(self):
+        return self._attr_state
+
+    @property
+    def extra_state_attributes(self):
+        return self._attr_extra_state_attributes
 
     @property
     def supported_languages(self) -> list[str]:
@@ -59,25 +70,27 @@ class FasterASRSTT(stt.SpeechToTextEntity):
 
     def genHeader(self, sampleRate, bitsPerSample, channels, samples):
         datasize = samples * channels * bitsPerSample // 8
-        o = bytes("RIFF",'ascii')                                               # (4byte) Marks file as RIFF
-        o += (datasize + 36).to_bytes(4,'little')                               # (4byte) File size in bytes excluding this and RIFF marker
-        o += bytes("WAVE",'ascii')                                              # (4byte) File type
-        o += bytes("fmt ",'ascii')                                              # (4byte) Format Chunk Marker
-        o += (16).to_bytes(4,'little')                                          # (4byte) Length of above format data
-        o += (1).to_bytes(2,'little')                                           # (2byte) Format type (1 - PCM)
-        o += (channels).to_bytes(2,'little')                                    # (2byte)
-        o += (sampleRate).to_bytes(4,'little')                                  # (4byte)
-        o += (sampleRate * channels * bitsPerSample // 8).to_bytes(4,'little')  # (4byte)
-        o += (channels * bitsPerSample // 8).to_bytes(2,'little')               # (2byte)
-        o += (bitsPerSample).to_bytes(2,'little')                               # (2byte)
-        o += bytes("data",'ascii')                                              # (4byte) Data Chunk Marker
-        o += (datasize).to_bytes(4,'little')                                    # (4byte) Data size in bytes
+        o = bytes("RIFF",'ascii')
+        o += (datasize + 36).to_bytes(4,'little')
+        o += bytes("WAVE",'ascii')
+        o += bytes("fmt ",'ascii')
+        o += (16).to_bytes(4,'little')
+        o += (1).to_bytes(2,'little')
+        o += (channels).to_bytes(2,'little')
+        o += (sampleRate).to_bytes(4,'little')
+        o += (sampleRate * channels * bitsPerSample // 8).to_bytes(4,'little')
+        o += (channels * bitsPerSample // 8).to_bytes(2,'little')
+        o += (bitsPerSample).to_bytes(2,'little')
+        o += bytes("data",'ascii')
+        o += (datasize).to_bytes(4,'little')
         return o
 
     async def async_process_audio_stream(
         self, metadata: stt.SpeechMetadata, stream: AsyncIterable[bytes]
     ) -> stt.SpeechResult:
         _LOGGER.debug("process_audio_stream start")
+        self._attr_state = "识别中"
+        self.async_write_ha_state()
 
         audio = b""
         async for chunk in stream:
@@ -103,19 +116,25 @@ class FasterASRSTT(stt.SpeechToTextEntity):
                         if result['code'] == 0 :
                             d = result['data']
                             if (len(d) > 0):
+                                self._attr_state = "就绪"
+                                self._attr_extra_state_attributes["响应"] = d[0]['text']
+                                self.async_write_ha_state()
                                 return stt.SpeechResult(d[0]['text'], stt.SpeechResultState.SUCCESS)
                             else:
-                                _LOGGER.info("未识别要语音信息")
+                                _LOGGER.info("未识别到语音信息")
+                                self._attr_state = "未识别到语音"
+                                self.async_write_ha_state()
                                 return stt.SpeechResult('', stt.SpeechResultState.SUCCESS)
                         else:
-                            return stt.SpeechResult(result['msg'], stt.SpeechResultState.SUCCESS)
+                            self._attr_state = "识别错误"
+                            self.async_write_ha_state()
+                            return stt.SpeechResult(result['msg'], stt.SpeechResultState.ERROR)
         except Exception as err:
             _LOGGER.exception("Error processing audio stream: %s", err)
-            return stt.SpeechResult('识别出现异常，请检查配置是否正确', stt.SpeechResultState.SUCCESS)
+            self._attr_state = "识别异常"
+            self.async_write_ha_state()
+            return stt.SpeechResult('识别出现异常，请检查配置是否正确', stt.SpeechResultState.ERROR)
 
+        self._attr_state = "识别错误"
+        self.async_write_ha_state()
         return stt.SpeechResult(None, stt.SpeechResultState.ERROR)
-
-
-
-
-
