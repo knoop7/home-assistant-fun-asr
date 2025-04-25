@@ -12,14 +12,12 @@ from . import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     async_add_entities([FasterASRSTT(hass, config_entry)])
-
 
 class FasterASRSTT(stt.SpeechToTextEntity):
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
@@ -30,7 +28,7 @@ class FasterASRSTT(stt.SpeechToTextEntity):
             self.address = f"{server}api"
         else:
             self.address = f"{server}/api"
-        self.model : str = config_entry.data["model"]
+        self.model: str = config_entry.data["model"]
         self._attr_name = f"Fun Asr server: ({server})"
         self._attr_unique_id = f"{config_entry.entry_id[:7]}-fun-asr"
         self._attr_state = "就绪"
@@ -70,19 +68,19 @@ class FasterASRSTT(stt.SpeechToTextEntity):
 
     def genHeader(self, sampleRate, bitsPerSample, channels, samples):
         datasize = samples * channels * bitsPerSample // 8
-        o = bytes("RIFF",'ascii')
-        o += (datasize + 36).to_bytes(4,'little')
-        o += bytes("WAVE",'ascii')
-        o += bytes("fmt ",'ascii')
-        o += (16).to_bytes(4,'little')
-        o += (1).to_bytes(2,'little')
-        o += (channels).to_bytes(2,'little')
-        o += (sampleRate).to_bytes(4,'little')
-        o += (sampleRate * channels * bitsPerSample // 8).to_bytes(4,'little')
-        o += (channels * bitsPerSample // 8).to_bytes(2,'little')
-        o += (bitsPerSample).to_bytes(2,'little')
-        o += bytes("data",'ascii')
-        o += (datasize).to_bytes(4,'little')
+        o = bytes("RIFF", 'ascii')
+        o += (datasize + 36).to_bytes(4, 'little')
+        o += bytes("WAVE", 'ascii')
+        o += bytes("fmt ", 'ascii')
+        o += (16).to_bytes(4, 'little')
+        o += (1).to_bytes(2, 'little')
+        o += (channels).to_bytes(2, 'little')
+        o += (sampleRate).to_bytes(4, 'little')
+        o += (sampleRate * channels * bitsPerSample // 8).to_bytes(4, 'little')
+        o += (channels * bitsPerSample // 8).to_bytes(2, 'little')
+        o += (bitsPerSample).to_bytes(2, 'little')
+        o += bytes("data", 'ascii')
+        o += (datasize).to_bytes(4, 'little')
         return o
 
     async def async_process_audio_stream(
@@ -93,18 +91,44 @@ class FasterASRSTT(stt.SpeechToTextEntity):
         self.async_write_ha_state()
 
         audio = b""
+        last_silence_injection = time.time()
+        silence_interval = 120  
+        silence_duration = 2  
+        sample_rate = stt.AudioSampleRates.SAMPLERATE_16000
+        bits_per_sample = stt.AudioBitRates.BITRATE_16
+        channels = stt.AudioChannels.CHANNEL_MONO
+
+        silence_samples = sample_rate * silence_duration
+        silence_bytes = silence_samples * channels * (bits_per_sample // 8)
+        silence_audio = b'\x00' * silence_bytes  
+
         async for chunk in stream:
             audio += chunk
 
+            current_time = time.time()
+            if current_time - last_silence_injection >= silence_interval:
+                audio += silence_audio
+                last_silence_injection = current_time
+                _LOGGER.debug(f"Injected {silence_duration} seconds of silence audio")
+
         _LOGGER.debug(f"process_audio_stream transcribe: {len(audio)} bytes")
 
-        wav_header = self.genHeader(stt.AudioSampleRates.SAMPLERATE_16000, stt.AudioBitRates.BITRATE_16, stt.AudioChannels.CHANNEL_MONO, len(audio))
+        wav_header = self.genHeader(
+            stt.AudioSampleRates.SAMPLERATE_16000,
+            stt.AudioBitRates.BITRATE_16,
+            stt.AudioChannels.CHANNEL_MONO,
+            len(audio) // (stt.AudioBitRates.BITRATE_16 // 8) 
+        )
+
         try:
             async with aiohttp.ClientSession() as session:
                 data = aiohttp.FormData()
-                data.add_field('file',wav_header+audio,
-                filename= f'{time.time()}.wav',
-                content_type='audio/wav')
+                data.add_field(
+                    'file',
+                    wav_header + audio,
+                    filename=f'{time.time()}.wav',
+                    content_type='audio/wav'
+                )
                 data.add_field('language', 'zh')
                 data.add_field('model', self.model)
                 data.add_field('response_format', 'json')
@@ -113,9 +137,9 @@ class FasterASRSTT(stt.SpeechToTextEntity):
                     if response.status == 200:
                         result = await response.json()
                         _LOGGER.debug(f"process_audio_stream end: {result}")
-                        if result['code'] == 0 :
+                        if result['code'] == 0:
                             d = result['data']
-                            if (len(d) > 0):
+                            if len(d) > 0:
                                 self._attr_state = "就绪"
                                 self._attr_extra_state_attributes["响应"] = d[0]['text']
                                 self.async_write_ha_state()
